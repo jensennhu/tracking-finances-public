@@ -1,4 +1,4 @@
-# Personal Finance Automation Dashboard
+# Tracking Finances
 
 An automated personal finance pipeline that pulls live bank/investment data from Google Sheets, processes it in R, and renders interactive HTML dashboards on a daily schedule via GitHub Actions. A summary is emailed each morning.
 
@@ -16,7 +16,6 @@ Google Sheets (Plaid bank feeds)
   .RDS intermediates
         │
         ├──▶ 02a_data_analytics.Rmd   → Main finance dashboard (HTML)
-        ├──▶ 02b_investing_journal.Rmd → Investing journal (HTML)
         └──▶ 03a_md_accounts.Rmd      → Daily email snapshot (Markdown)
 
 GitHub Actions runs the full pipeline daily at 7 AM UTC,
@@ -27,7 +26,7 @@ commits outputs, and emails the account summary.
 
 ## Reports
 
-### Finance Dashboard (`02a_data_analytics.Rmd`)
+### Finance Visualizations Markdown (`02a_data_analytics.Rmd`)
 - **Checking account threshold** — bar chart vs. a configurable buffer amount
 - **Net worth over time** — multi-panel: all-time, 6-month, 3-month views broken down by account type (brokerage/IRA, savings/checking)
 - **Accounts overview** — interactive table with current balance and month-over-month change
@@ -35,12 +34,6 @@ commits outputs, and emails the account summary.
 - **Budget tracker** — current and previous month: actual vs. budget per category, color-coded status
 - **Spending heatmaps** — budget categories × months; daily transactions × category
 - **Transaction detail** — filterable table of all transactions this month
-
-### Investing Journal (`02b_investing_journal.Rmd`)
-- **Portfolio summary** — current value, total gain, % return since opening
-- **Goal projection** — configurable compound growth target vs. actual monthly performance
-- **Daily balance chart** — portfolio value over time
-- **Fear & Greed Index** — live crypto sentiment via [alternative.me API](https://alternative.me/crypto/fear-and-greed-index/), 200-day trend
 
 ### Daily Email Snapshot (`03a_md_accounts.Rmd`)
 - Account balances with since-yesterday change indicators
