@@ -13,21 +13,15 @@ google_sheet_id  <- "your-google-sheet-id"
 # Update here when accounts open/close or are renamed.
 # Mask values are the last 4 digits of each account number (from Plaid).
 account_masks <- c(
-  "255"  = "Chase Checking",
-  "2138" = "BOA Checking",
-  "7074" = "WF Checking",
-  "6369" = "Chase SD Invest",
-  "1082" = "Etrade Invest",
-  "5879" = "RHood Invest",
-  "138"  = "RHood Roth IRA",
-  "1555" = "RHood Trad IRA",
-  "2443" = "RHood Income",
-  "4256" = "RHood Main",
-  "4048" = "CptlOne Savings"
+  "0000" = "Chase Checking",
+  "4444" = "Etrade Invest",
+  "6666" = "RHood Roth IRA",
+  "7777" = "RHood Trad IRA",
+  "9999" = "CptlOne Savings"
 )
 
 # Mask values for accounts to exclude from balance analysis
-exclude_mask <- c(4256, 2443)
+exclude_mask <- c(1111, 3333)
 
 # BILT rent transaction identification
 rent_merchant_pattern <- "BILT"
@@ -36,17 +30,3 @@ rent_amount           <- 1750
 # Checking account monitoring
 checking_account_name   <- "Chase Checking"
 checking_account_buffer <- 6500
-
-# Accounts no longer active (excluded from net worth charts)
-archive_accounts <- c("Chase SD Invest", "Roth IRA")
-
-# Robinhood account tracking
-rh_accounts   <- c("RHood Invest", "RHood Roth IRA", "RHood Trad IRA")
-rh_start_date <- "2025-07-30"  # Use ymd(rh_start_date) where a Date is needed
-
-# Investment goal projection parameters
-# NOTE: monthly_rate of 0.25 = 25% monthly return; verify this is intentional
-#       (25% annual ≈ 1.9% monthly)
-investment_initial_balance   <- 0      # Set to your starting portfolio value
-investment_monthly_rate      <- 0.25
-investment_projection_months <- 15
