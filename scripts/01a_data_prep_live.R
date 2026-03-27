@@ -56,8 +56,7 @@ balance <- balance %>%
     week  = week(date),
     day   = day(date)
   ) %>%
-  filter(mask != exclude_mask,
-         date < date("2025/03/01")) 
+  filter(mask != exclude_mask) 
 
 # determine max dates each month w/data
 dates_clean <- balance %>% 
@@ -128,7 +127,7 @@ transactions <- transactions %>%
     week  = week(date),
     day   = day(date),   
     year_month = paste0(year, "_", month),
-  ) %>%  filter(date < date("2025/03/01")) 
+  ) 
 
 
 subset <- transactions %>% 
