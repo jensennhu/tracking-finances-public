@@ -32,8 +32,6 @@ prog   <- here("04_Programs")
 source(here("scripts", "config.R"))
 source(here("scripts", "functions.R"))
 
-#source(file.path(prog, "01_data_prep_live.R"))
-
 balance                   <- readRDS(file.path(inter, "balance.RDS"))
 balance_metric_curr       <- readRDS(file.path(inter, "balance_metric_curr.RDS"))
 balance_metric_per_month  <- readRDS(file.path(inter, "balance_metric_per_month.RDS"))
