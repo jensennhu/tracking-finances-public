@@ -1,0 +1,335 @@
+---
+title: "Automated Finance Report"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+    theme: journal
+    highlights : tango
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+# Load libraries
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(DT)
+library(here)
+library(lubridate)
+library(janitor)
+library(ggplot2)
+library(fontawesome)
+library(patchwork)
+library(formattable)
+
+# filepaths
+data   <- here("01_Data")
+inter  <- here("02_Intermediate")
+output <- here("03_Output")
+prog   <- here("04_Programs")
+
+source(here("scripts", "config.R"))
+source(here("scripts", "functions.R"))
+
+#source(file.path(prog, "01_data_prep_live.R"))
+
+balance                   <- readRDS(file.path(inter, "balance.RDS"))
+balance_metric_curr       <- readRDS(file.path(inter, "balance_metric_curr.RDS"))
+balance_metric_per_month  <- readRDS(file.path(inter, "balance_metric_per_month.RDS"))
+budget                    <- readRDS(file.path(inter, "budget.RDS"))
+subset                    <- readRDS(file.path(inter, "subset.RDS"))
+interest                  <- readRDS(file.path(inter, "interest.RDS"))
+
+```
+
+## Threshold Checking
+```{r, fig.width=10, fig.height=2}
+
+# vector of latest dates each month
+dates_clean_monthly <- balance %>% 
+  # get latest dates in each month
+  group_by(month) %>% 
+  mutate(max_month = max(date)) %>%
+  pull(max_month) %>% 
+  unique()
+
+# checking account balance- most recent
+check_accnt_balance <- balance_metric_per_month %>%
+  slice_max(date) %>%
+  filter(name == checking_account_name)
+
+# compare balance to threshold needed (3 months of expenses)
+check_net <- check_accnt_balance$value_usd - checking_account_buffer
+
+# plot bar - account balance 
+check_accnt_balance %>% 
+  ggplot(aes(x = month, y = value_usd, label = scales::dollar(value_usd))) +
+  geom_bar(stat = "identity",  fill = "blue") +
+  geom_hline(yintercept = checking_account_buffer, linewidth = 2) +
+  geom_label(vjust = -1.0, position = position_nudge(y = -100)) +
+  theme(
+    axis.title.y=element_blank(),
+    axis.text.y=element_blank(),
+    axis.ticks.y=element_blank()
+  ) +
+  coord_flip() +
+  ggtitle("Checking Acccount Balance", subtitle = paste0(
+    "Status: ",
+    if_else(check_net > 0, "Good shape! Buffered by ", "Be careful...below needed level by "),
+    scales::dollar(check_net)))
+
+  
+```
+
+## Net Worth {.tabset}
+### All Time
+```{r, fig.height = 8, fig.width=10, fig.align='C', warning=FALSE, message=FALSE}
+net_worth(dates_clean_monthly, archive_accounts)
+```
+
+### 6 months
+```{r, fig.height = 8, fig.width=10, fig.align='C', warning=FALSE, message=FALSE}
+net_worth(dates_clean_monthly[1:6], archive_accounts)
+```
+
+### 3 months
+```{r, fig.height = 8, fig.width=10, fig.align='C', warning=FALSE, message=FALSE}
+net_worth(dates_clean_monthly[1:3], archive_accounts)
+```
+
+
+## Accounts Overview
+```{r fig.height = 8, fig.width=10, fig.align='C'}
+
+accnt_overview <- function(data){
+  data %>% 
+    filter(!name %in% archive_accounts) %>%
+    mutate(
+      icon = ifelse(diff > 0, fa(name = "arrow-up",   fill = "green"), 
+             ifelse(diff < 0, fa(name = "arrow-down", fill = "red")  , "")),
+      MonthTodate = paste0(icon, change)
+      ) %>% 
+    rename(value_usd = value_current) %>% 
+    select(
+      -value_previous, 
+      -diff, 
+      -delta, 
+      -icon, 
+      -date, 
+      -change
+      ) %>% 
+    DT::datatable(
+      rownames = FALSE, 
+      escape   = FALSE, 
+      options  = list(paging = FALSE)
+      ) %>% 
+    formatCurrency(
+      "value_usd", 
+      '\U0024', 
+      digits = 2
+      ) 
+}
+accnt_overview(balance_metric_curr)
+```
+
+
+## Overall Pay, Spend, Net {.tabset}
+```{r, message = FALSE}
+dfSumm <- subset %>%
+  group_by(main_category, year, month) %>% 
+  summarise(total = sum(amount, na.rm = TRUE)) %>%  
+  mutate(ym = my(paste0(month, "-", year))) %>% 
+  arrange(ym, desc(total)) %>% 
+  select(-ym) %>% 
+  pivot_wider(names_from = c(year, month), values_from = total) %>% 
+  ungroup() %>% 
+  mutate(
+    across(where(is.numeric), ~if_else(is.na(.x), 0, .x)),
+    row_total = select(., -c(main_category)) %>% rowSums(na.rm = TRUE, 1)
+    ) %>% 
+  arrange(desc(row_total))
+
+
+cols <- colnames(dfSumm %>% select(-main_category)) 
+
+# Pay, Spending, Net
+overall <- dfSumm %>% 
+  adorn_totals(name = "Net") %>% 
+  filter(main_category %in% c("Paycheck", "Net")) %>% 
+  rbind(
+    dfSumm %>% 
+      filter(!main_category %in% c("Paycheck")) %>% 
+      adorn_totals(name = "Spending") %>% 
+      filter(main_category == "Spending")
+    ) %>% 
+  mutate(main_category = factor(main_category, levels = c("Paycheck", "Spending", "Net"))) %>% 
+  arrange(main_category) 
+```
+
+### Paycheck overlay
+```{r, fig.width=10, fig.height=5}
+# Paycheck overlayed with Net
+overall %>% 
+  pivot_longer(-main_category) %>% 
+  pivot_wider(names_from = main_category, values_from = value) %>% 
+  filter(name != "row_total") %>% 
+  select(name, Paycheck, Spending, Net) %>% 
+  mutate(
+    name = ym(name),
+    Net_perc = round(Net/Paycheck * 100, 2)
+    ) %>%  
+  ggplot(aes(x = name, y = Paycheck)) + 
+  geom_bar(stat = "identity",  color = "orange") + 
+  geom_point(aes(y = Net, color = Net > 0, size = 6)) +  
+  geom_text(
+    aes(
+      x=name, 
+      y=-1000,
+      label = paste0(round(Net_perc), "%")
+  ))+
+  scale_x_date(date_breaks = "1 month", date_labels = "%b-%Y") +  
+  scale_y_continuous(breaks = seq(-20000, 20000, by = 1000)) + 
+  scale_colour_manual(name = 'Net Positive', values = setNames(c('green3','red3'),c(T, F))) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  theme(legend.position = "none",
+        axis.title.x=element_blank())
+```
+
+### Income by month (detail)
+```{r warning=FALSE, message=FALSE}
+DT::datatable(overall %>% 
+  pivot_longer(-main_category) %>% 
+  pivot_wider(names_from = main_category, values_from = value) %>% 
+  arrange(desc(name))
+    , options = list(pageLength = 6)) %>% 
+  formatCurrency(c("Paycheck", "Spending", "Net"), '\U0024', digits = 2) %>% 
+  formatStyle(c("Paycheck", "Spending", "Net"), color = styleInterval(c(0), c('red','black')))
+```
+
+## Summary of Transactions {.tabset}
+### Budget Status {.tabset}
+#### Current Month
+```{r summ, warning=FALSE, message=FALSE}
+
+#-------------------------------------------------------------------------------
+# Initial Summary Table of Transaction Categories  
+#-------------------------------------------------------------------------------
+
+# existing year-month vector
+ym <- subset %>% 
+  select(year_month) %>% 
+  unique() %>% 
+  pull()
+
+trans_this_month <-  subset %>%
+  filter(year_month == ym[1]) 
+
+dfSumm_curr <- trans_this_month %>% 
+  # expenses by category and year-month
+  group_by(main_category, year, month, year_month) %>% 
+  summarise(total = sum(amount, na.rm = TRUE)) %>%  
+  arrange(year_month, desc(total)) %>% 
+  select(-year_month) %>% 
+  pivot_wider(
+    names_from = c(year, month), 
+    values_from = total
+  ) %>% 
+  ungroup() %>% 
+  mutate(across(where(is.numeric), ~if_else(is.na(.x), 0, .x)))
+
+dfSumm_all <- subset %>% 
+  # expenses by category and year-month
+  group_by(main_category, year, month) %>% 
+  summarise(total = sum(amount, na.rm = TRUE)) %>%  
+  mutate(ym = my(paste0(month, "-", year))) %>% 
+  arrange(ym, desc(total)) %>% 
+  select(-ym) %>% 
+  pivot_wider(
+    names_from = c(year, month), 
+    values_from = total
+  ) %>% 
+  ungroup() %>% 
+  mutate(across(where(is.numeric), ~if_else(is.na(.x), 0, .x)))
+
+# -- budget + expenses 
+budget_exp <- budget %>% 
+  full_join(
+    dfSumm_all, 
+    by =c("budget_cat" = "main_category")
+    ) %>% 
+  arrange(desc(.[3])) %>% 
+  # compare expenses to budget
+  pivot_longer(
+    -c("budget_cat", "monthly_budget"), 
+    names_to = "year_month",
+    values_to = "expenses"
+    ) %>% 
+  mutate(
+    year = substr(year_month, 1, 4),
+    month = sprintf("%02s", substr(year_month, 6, 7)),
+    year_month = paste0(year, "_", month),
+    inrange = as.numeric(monthly_budget + expenses > 0)
+    ) %>% 
+  select(-year, -month) %>% 
+  group_by(budget_cat) %>% 
+  mutate(
+    total = sum(inrange, na.rm = TRUE)) 
+
+ord_budget_cat <- budget_exp %>% select(budget_cat, total) %>% unique() %>% arrange(total) %>% pull(budget_cat)
+
+gen_budget_table(budget_exp, ym[1])
+```
+#### Previous Month
+```{r , warning=FALSE, message=FALSE}
+gen_budget_table(budget_exp, ym[2])
+```
+
+### General
+```{r}
+# Expenses out-of-range by month
+budget_exp %>%
+  filter(!is.na(monthly_budget)) %>% 
+  mutate(budget_cat = factor(budget_cat, levels = ord_budget_cat)) %>% 
+  ggplot(aes(x = year_month, y = budget_cat, fill = inrange )) +
+    geom_tile(color = "black")+
+    scale_fill_gradient(low = "#FF0000",
+                       high = "#FFFFCC") +
+    coord_fixed() +
+    theme(axis.text.x = element_text(angle = 90, vjust = .5), axis.title.y = element_blank())
+
+
+x <- trans_this_month %>% 
+  mutate(dow = paste0("wk", week, "-d", day)) %>% 
+  filter(amount < 2000 & amount > -1300)
+
+y <- x %>% select(plaid_category_2, date) %>% 
+  unique() %>% 
+  group_by(plaid_category_2) %>% 
+  tally() %>% 
+  arrange(n) %>% 
+  select(plaid_category_2) %>% pull()
+
+ggplot(x %>% mutate(plaid_category_2 = factor(plaid_category_2, levels = y)), 
+       aes(x = date, y = plaid_category_2, fill = amount)) +
+    geom_tile(color = "black") +
+    scale_fill_gradient2(low = "#075AFF",
+                         mid = "#FFFFCC",
+                         high = "#FF0000") +
+    coord_fixed() +
+    theme(axis.text.x = element_text(angle = 90, vjust = .5)) +
+    scale_x_date(position = "top", date_breaks = "day", date_labels = "%b%d") +
+    theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+```
+
+### Transactions this month
+```{r}
+if(nrow(dfSumm_curr > 0)){
+DT::datatable(trans_this_month %>% select(date, name, merchant_name, main_category, amount, starts_with("plaid_cat")), options = list(paging = TRUE)) %>% 
+  formatCurrency("amount", '\U0024', digits = 2) %>% 
+  formatStyle("amount", color = styleInterval(c(-.01), c('red','black')))  
+}
+```
+
+

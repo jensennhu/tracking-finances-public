@@ -1,0 +1,102 @@
+---
+title: "Accounts Overview"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  md_document
+---
+
+```{r setup, include=FALSE}
+# Load libraries
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(here)
+library(lubridate)
+library(janitor)
+library(fontawesome)
+library(knitr)
+library(formattable)
+library(htmltools)
+library(webshot)
+library(googledrive)
+
+# filepaths
+data   <- here("01_Data")
+inter  <- here("02_Intermediate")
+output <- here("03_Output")
+prog   <- here("04_Programs")
+
+#source(file.path(prog, "01_data_prep_live.R"))
+source(here("scripts", "config.R"))
+balance <- readRDS(file.path(inter, "balance.RDS"))
+# webshot::install_phantomjs()  # run once locally, or via GitHub Actions
+
+googledrive::drive_auth(path = here(google_json_path))
+```
+
+
+```{r, echo=FALSE, message = FALSE}
+
+dates_clean <- balance %>% 
+  mutate(miss = as.numeric(is.na(value_usd))) %>%
+  group_by(date)%>%
+  mutate(miss_date = max(miss))%>%
+  ungroup()%>%
+  filter(miss_date == 0) %>%
+  pull(date) %>% unique()
+
+# most recent account balance/value 
+current_balance <- balance %>% 
+  filter(date == dates_clean[1]) %>% 
+  select(date, name, account_subtype, value_current = value_usd) %>% 
+  arrange(desc(value_current))
+
+# previous month account balance/value
+previous_balance <- balance %>% 
+  filter(date == dates_clean[2]) %>% 
+  select(name, account_subtype, value_previous = value_usd) %>% 
+  arrange(desc(value_previous))
+
+balance_metric_curr <- current_balance %>% 
+  left_join(previous_balance, by = c("name", "account_subtype")) %>% 
+  adorn_totals() %>%
+  mutate(
+    diff = value_current - value_previous,
+    delta = if_else(account_subtype == "credit card",  
+                    round((value_current - value_previous)/value_current * 100),
+                    round((abs(value_current) - abs(value_previous))/abs(value_current) * 100)),
+    change = paste0(round(diff, 2), " (", delta, "%)")) 
+
+table <- balance_metric_curr %>% 
+  mutate(
+    icon = ifelse(diff>0, fa(name = "circle-up", fill = "green"), 
+                  ifelse(diff < 0, fa(name = "circle-down", fill = "red"), "")),
+    "Since Yday" = paste0(icon, change)
+    ) %>% 
+  mutate(
+    value_current = scales::dollar(value_current)) %>% 
+  rename("Value ($)" = value_current) %>% 
+  select(-value_previous, -diff, -delta, -icon, -date, -change) %>% 
+  formattable()
+
+export_formattable <- function(f, file, width = "100%", height = NULL, 
+                               background = "white", delay = 0.2)
+    {
+      w <- as.htmlwidget(f, width = width, height = height)
+      path <- html_print(w, background = background, viewer = NULL)
+      url <- paste0("file:///", gsub("\\\\", "/", normalizePath(path)))
+      Sys.setenv(OPENSSL_CONF="/dev/null")
+      webshot(url,
+              file = file,
+              selector = ".formattable_widget",
+              delay = delay)
+    }
+
+googledrive::drive_update(file = "test.png", media = export_formattable(table, "table.png"))
+
+```
+![Overview of changes since yesterday](https://lh3.googleusercontent.com/d/16rgdquLqs2wv_jZ5s7CW68wGczWAPpPW) 
+
+For more detail, look here: https://personal-finances.pages.dev/
+Review of stocks in portfolio: https://stock-analysis-c6j.pages.dev/ 
+StockScanner: https://stock-scanner.pages.dev/
