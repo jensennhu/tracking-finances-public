@@ -95,8 +95,6 @@ export_formattable <- function(f, file, width = "100%", height = NULL,
 googledrive::drive_update(file = "test.png", media = export_formattable(table, "table.png"))
 
 ```
-![Overview of changes since yesterday](https://lh3.googleusercontent.com/d/16rgdquLqs2wv_jZ5s7CW68wGczWAPpPW) 
+![Overview of changes since yesterday](https://lh3.googleusercontent.com/d/123) 
 
 For more detail, look here: https://personal-finances.pages.dev/
-Review of stocks in portfolio: https://stock-analysis-c6j.pages.dev/ 
-StockScanner: https://stock-scanner.pages.dev/
